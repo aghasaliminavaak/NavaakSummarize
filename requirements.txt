@@ -1,0 +1,3 @@
+pyTelegramBotAPI
+youtube-transcript-api
+google-generativeai
