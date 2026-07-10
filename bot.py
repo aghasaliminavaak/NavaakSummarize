@@ -1,43 +1,71 @@
 import os
 import telebot
 import google.generativeai as genai
+import re
 
 bot = telebot.TeleBot(os.environ.get("TELEGRAM_TOKEN"))
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "سلام! متن زیرنویس را بفرست تا تحلیلش کنم. (اگر متن خیلی طولانی است، آن را به ۲ یا ۳ بخش تقسیم کن و بفرست).")
+# پاک کردن زمان‌ها و کدهای اضافی از فایل SRT
+def clean_srt(text):
+    # حذف اعداد و تایم‌کدها (مثلاً 00:00:12,000 --> 00:00:15,000)
+    text = re.sub(r'\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n', '', text)
+    return text
 
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    text = message.text
-    if len(text) < 50:
-        bot.reply_to(message, "متن خیلی کوتاه است. لطفاً متن کامل را بفرست.")
-        return
-        
-    bot.reply_to(message, "در حال تحلیل... 🤖")
-    
+@bot.message_handler(content_types=['document'])
+def handle_docs(message):
     try:
-        # محدود کردن متن برای جلوگیری از کرش کردن سرور
-        if len(text) > 10000:
-            text = text[:10000]
-            bot.reply_to(message, "متن طولانی بود، بخش اول آن را تحلیل می‌کنم...")
-            
-        prompt = f"""
-        بر اساس متن زیر، این موارد را به فارسی بنویس:
-        1. تیتر جذاب
-        2. دیسکریپشن (توضیحات) کامل
-        3. چند هشتگ مرتبط
-        4. کلمات کلیدی (تگ‌ها) جدا شده با کاما (مجموعاً کمتر از 500 کاراکتر)
+        # دانلود فایل از تلگرام
+        file_info = bot.get_file(message.document.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
         
-        متن:
-        {text}
-        """
+        # تبدیل فایل به متن و تمیز کردن
+        text = downloaded_file.decode('utf-8')
+        clean_text = clean_srt(text)
+        
+        bot.reply_to(message, "فایل دریافت شد. در حال تحلیل هوشمند... 🤖")
+        
+        prompt = f"بر اساس این متن زیرنویس، یک تیتر جذاب، دیسکریپشن سئو شده، هشتگ‌ها و تگ‌های یوتیوب (کمتر از 500 کاراکتر) به فارسی بنویس:\n{clean_text[:10000]}"
+        
         response = model.generate_content(prompt)
         bot.reply_to(message, response.text)
     except Exception as e:
-        bot.reply_to(message, f"خطا در پردازش. اگر متن خیلی طولانی است، آن را کوتاه‌تر کن.")
+        bot.reply_to(message, "خطا در خواندن فایل. مطمئن شو فایل با فرمت .srt است.")
+
+bot.polling()import os
+import telebot
+import google.generativeai as genai
+import re
+
+bot = telebot.TeleBot(os.environ.get("TELEGRAM_TOKEN"))
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+# پاک کردن زمان‌ها و کدهای اضافی از فایل SRT
+def clean_srt(text):
+    # حذف اعداد و تایم‌کدها (مثلاً 00:00:12,000 --> 00:00:15,000)
+    text = re.sub(r'\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n', '', text)
+    return text
+
+@bot.message_handler(content_types=['document'])
+def handle_docs(message):
+    try:
+        # دانلود فایل از تلگرام
+        file_info = bot.get_file(message.document.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        
+        # تبدیل فایل به متن و تمیز کردن
+        text = downloaded_file.decode('utf-8')
+        clean_text = clean_srt(text)
+        
+        bot.reply_to(message, "فایل دریافت شد. در حال تحلیل هوشمند... 🤖")
+        
+        prompt = f"بر اساس این متن زیرنویس، یک تیتر جذاب، دیسکریپشن سئو شده، هشتگ‌ها و تگ‌های یوتیوب (کمتر از 500 کاراکتر) به فارسی بنویس:\n{clean_text[:10000]}"
+        
+        response = model.generate_content(prompt)
+        bot.reply_to(message, response.text)
+    except Exception as e:
+        bot.reply_to(message, "خطا در خواندن فایل. مطمئن شو فایل با فرمت .srt است.")
 
 bot.polling()
