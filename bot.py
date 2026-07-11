@@ -48,7 +48,12 @@ def handle_link(message):
             return
             
         # ۲. گرفتن متن زیرنویس
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['fa', 'en'])
+        # گرفتن متن زیرنویس با استفاده از فایل کوکی
+transcript_list = YouTubeTranscriptApi.get_transcript(
+    video_id, 
+    languages=['fa', 'en'],
+    cookies='cookies.txt'
+)
         text = " ".join([t['text'] for t in transcript_list])
         
         bot.reply_to(message, "زیرنویس دریافت شد! در حال تحلیل با هوش مصنوعی... 🧠")
