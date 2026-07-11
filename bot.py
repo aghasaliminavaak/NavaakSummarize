@@ -6,7 +6,6 @@ import google.generativeai as genai
 import threading
 from flask import Flask
 
-# دریافت رمزها از تنظیمات Railway
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
@@ -14,8 +13,6 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# ==========================================
-# سرور فیک برای روشن ماندن در Railway
 app = Flask(__name__)
 @app.route('/')
 def home():
@@ -24,9 +21,7 @@ def home():
 def run_web():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-# ==========================================
 
-# تابع جدید و بی‌دردسر برای استخراج آیدی ویدیو از روی متن لینک
 def get_video_id(url):
     match = re.search(r"(?:v=|\/|youtu\.be\/)([0-9A-Za-z_-]{11})", url)
     return match.group(1) if match else None
@@ -41,24 +36,21 @@ def handle_link(message):
         url = message.text
         bot.reply_to(message, "در حال استخراج زیرنویس... لطفا منتظر بمانید ⏳")
         
-        # ۱. پیدا کردن آیدی ویدیو بدون درگیری با سرور یوتیوب
         video_id = get_video_id(url)
         if not video_id:
-            bot.reply_to(message, "❌ لینک یوتیوب نامعتبر است. لطفاً یک لینک صحیح بفرست.")
+            bot.reply_to(message, "❌ لینک یوتیوب نامعتبر است.")
             return
             
-        # ۲. گرفتن متن زیرنویس
-        # گرفتن متن زیرنویس با استفاده از فایل کوکی
-transcript_list = YouTubeTranscriptApi.get_transcript(
-    video_id, 
-    languages=['fa', 'en'],
-    cookies='cookies.txt'
-)
+        # این همان بخشی است که به یوتیوب می‌گوید ما ربات نیستیم
+        transcript_list = YouTubeTranscriptApi.get_transcript(
+            video_id, 
+            languages=['fa', 'en'],
+            cookies='cookies.txt'
+        )
         text = " ".join([t['text'] for t in transcript_list])
         
         bot.reply_to(message, "زیرنویس دریافت شد! در حال تحلیل با هوش مصنوعی... 🧠")
 
-        # ۳. ارسال به جمینای برای تولید محتوای سئو شده
         prompt = f"""
         تو یک متخصص سئو و تولید محتوا برای یوتیوب هستی. بر اساس متن زیرنویس این ویدیو:
         ۱. سه تا تایتل جذاب و کلیک‌خور به فارسی پیشنهاد بده.
