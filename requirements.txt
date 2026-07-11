@@ -1,5 +1,4 @@
 pyTelegramBotAPI
 youtube-transcript-api
-yt-dlp
 google-generativeai
 Flask
