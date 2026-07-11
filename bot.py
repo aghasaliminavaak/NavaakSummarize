@@ -1,71 +1,71 @@
 import os
 import telebot
+import yt_dlp
+from youtube_transcript_api import YouTubeTranscriptApi
 import google.generativeai as genai
-import re
+import threading
+from flask import Flask
 
-bot = telebot.TeleBot(os.environ.get("TELEGRAM_TOKEN"))
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+# دریافت رمزها از تنظیمات Railway
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
+genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# پاک کردن زمان‌ها و کدهای اضافی از فایل SRT
-def clean_srt(text):
-    # حذف اعداد و تایم‌کدها (مثلاً 00:00:12,000 --> 00:00:15,000)
-    text = re.sub(r'\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n', '', text)
-    return text
+# ==========================================
+# این بخش سرور فیک است تا Railway ارور ندهد
+app = Flask(__name__)
+@app.route('/')
+def home():
+    return "Bot is alive and running perfectly!"
 
-@bot.message_handler(content_types=['document'])
-def handle_docs(message):
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+# ==========================================
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "سلام! من آماده‌ام. لینک ویدیوی یوتیوب رو بفرست تا سئوش کنم.")
+
+@bot.message_handler(func=lambda message: True)
+def handle_link(message):
     try:
-        # دانلود فایل از تلگرام
-        file_info = bot.get_file(message.document.file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
+        url = message.text
+        bot.reply_to(message, "در حال استخراج زیرنویس... لطفا منتظر بمانید ⏳")
         
-        # تبدیل فایل به متن و تمیز کردن
-        text = downloaded_file.decode('utf-8')
-        clean_text = clean_srt(text)
+        # ۱. استخراج آیدی ویدیو با yt-dlp (بدون دانلود ویدیو)
+        ydl_opts = {'quiet': True, 'extract_flat': True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            video_id = info['id']
         
-        bot.reply_to(message, "فایل دریافت شد. در حال تحلیل هوشمند... 🤖")
+        # ۲. گرفتن متن زیرنویس
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['fa', 'en'])
+        text = " ".join([t['text'] for t in transcript_list])
         
-        prompt = f"بر اساس این متن زیرنویس، یک تیتر جذاب، دیسکریپشن سئو شده، هشتگ‌ها و تگ‌های یوتیوب (کمتر از 500 کاراکتر) به فارسی بنویس:\n{clean_text[:10000]}"
+        bot.reply_to(message, "زیرنویس دریافت شد! در حال تحلیل با هوش مصنوعی... 🧠")
+
+        # ۳. ارسال به جمینای برای تولید محتوای سئو شده
+        prompt = f"""
+        تو یک متخصص سئو و تولید محتوا برای یوتیوب هستی. بر اساس متن زیرنویس این ویدیو:
+        ۱. سه تا تایتل جذاب و کلیک‌خور به فارسی پیشنهاد بده.
+        ۲. یک دیسکریپشن حرفه‌ای و سئوشده بنویس.
+        ۳. تگ‌ها و هشتگ‌های مناسب رو لیست کن.
         
+        متن ویدیو:
+        {text[:10000]}
+        """
         response = model.generate_content(prompt)
+        
         bot.reply_to(message, response.text)
+        
     except Exception as e:
-        bot.reply_to(message, "خطا در خواندن فایل. مطمئن شو فایل با فرمت .srt است.")
+        bot.reply_to(message, f"❌ خطا در پردازش: {str(e)}\n\n(مطمئن شو ویدیو زیرنویس داره و پرایوت نیست)")
 
-bot.polling()import os
-import telebot
-import google.generativeai as genai
-import re
-
-bot = telebot.TeleBot(os.environ.get("TELEGRAM_TOKEN"))
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
-
-# پاک کردن زمان‌ها و کدهای اضافی از فایل SRT
-def clean_srt(text):
-    # حذف اعداد و تایم‌کدها (مثلاً 00:00:12,000 --> 00:00:15,000)
-    text = re.sub(r'\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n', '', text)
-    return text
-
-@bot.message_handler(content_types=['document'])
-def handle_docs(message):
-    try:
-        # دانلود فایل از تلگرام
-        file_info = bot.get_file(message.document.file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        
-        # تبدیل فایل به متن و تمیز کردن
-        text = downloaded_file.decode('utf-8')
-        clean_text = clean_srt(text)
-        
-        bot.reply_to(message, "فایل دریافت شد. در حال تحلیل هوشمند... 🤖")
-        
-        prompt = f"بر اساس این متن زیرنویس، یک تیتر جذاب، دیسکریپشن سئو شده، هشتگ‌ها و تگ‌های یوتیوب (کمتر از 500 کاراکتر) به فارسی بنویس:\n{clean_text[:10000]}"
-        
-        response = model.generate_content(prompt)
-        bot.reply_to(message, response.text)
-    except Exception as e:
-        bot.reply_to(message, "خطا در خواندن فایل. مطمئن شو فایل با فرمت .srt است.")
-
-bot.polling()
+# اجرای همزمان وب‌سرور و ربات تلگرام
+if __name__ == "__main__":
+    threading.Thread(target=run_web).start()
+    bot.infinity_polling()
