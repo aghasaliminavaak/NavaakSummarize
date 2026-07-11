@@ -2,6 +2,7 @@ import os
 import telebot
 import re
 import requests
+import html
 import google.generativeai as genai
 import threading
 from flask import Flask
@@ -30,16 +31,33 @@ def get_video_id(url):
     match = re.search(r"(?:v=|\/|youtu\.be\/)([0-9A-Za-z_-]{11})", url)
     return match.group(1) if match else None
 
-# --- هسته جدید و ضدتحریم برای استخراج زیرنویس ---
+# --- موتور استخراج متن ضدتحریم (نسخه ۳ - استفاده از سایت‌های مرجع) ---
 def get_transcript_bypass(video_id):
-    # لیست سرورهای واسطه اُپن‌سورس
-    instances = [
+    # روش اول: استفاده از youtubetranscript.com (بسیار سریع و پایدار)
+    try:
+        url = f"https://youtubetranscript.com/?server_vid2={video_id}"
+        res = requests.get(url, timeout=10)
+        
+        if res.status_code == 200 and "<text" in res.text:
+            # استخراج تمام متن‌ها از فایل XML
+            texts = re.findall(r'<text[^>]*>(.*?)</text>', res.text)
+            # تبدیل کدهای HTML به متن عادی (مثلا &quot; به ")
+            clean_texts = [html.unescape(t) for t in texts]
+            final_text = " ".join(clean_texts)
+            
+            if len(final_text) > 50:
+                return final_text
+    except Exception as e:
+        print(f"Method 1 failed: {e}")
+
+    # روش دوم: سرورهای پشتیبان (اگر روش اول کار نکرد)
+    backup_instances = [
+        "https://pipedapi.tokhmi.xyz", 
         "https://pipedapi.kavin.rocks",
-        "https://pipedapi.syncpundit.io",
-        "https://pipedapi.drgns.space"
+        "https://pipedapi.syncpundit.io"
     ]
     
-    for api_url in instances:
+    for api_url in backup_instances:
         try:
             url = f"{api_url}/streams/{video_id}"
             res = requests.get(url, timeout=10)
@@ -47,29 +65,21 @@ def get_transcript_bypass(video_id):
                 data = res.json()
                 subtitles = data.get("subtitles", [])
                 if not subtitles:
-                    continue # اگر زیرنویس نداشت، برو سرور بعدی
+                    continue
                 
-                # اولویت با زیرنویس فارسی یا انگلیسی
                 sub_url = None
                 for sub in subtitles:
                     if sub.get("code") in ["fa", "en"]:
                         sub_url = sub.get("url")
                         break
-                
                 if not sub_url:
-                    sub_url = subtitles[0].get("url") # انتخاب اولین زیرنویس موجود
+                    sub_url = subtitles[0].get("url")
                     
-                # دانلود متن زیرنویس
                 vtt_res = requests.get(sub_url, timeout=10)
-                vtt_text = vtt_res.text
-                
-                # پاکسازی زمان‌ها و تبدیل به متن خالص
                 clean_text = []
-                for line in vtt_text.split('\n'):
-                    # نادیده گرفتن کدهای زمانی و اطلاعات اضافه
+                for line in vtt_res.text.split('\n'):
                     if '-->' in line or line.startswith('WEBVTT') or line.startswith('Kind:') or line.startswith('Language:') or not line.strip():
                         continue
-                    # حذف تگ‌های HTML
                     clean_line = re.sub(r'<[^>]+>', '', line)
                     clean_text.append(clean_line.strip())
                 
@@ -77,7 +87,7 @@ def get_transcript_bypass(video_id):
                 if final_text:
                     return final_text
         except Exception:
-            continue # اگر این سرور خراب بود، سرور بعدی را تست کن
+            continue
             
     return None
 # ----------------------------------------
@@ -90,21 +100,20 @@ def send_welcome(message):
 def handle_link(message):
     try:
         url = message.text
-        bot.reply_to(message, "در حال استخراج زیرنویس از طریق سرورهای واسطه... ⏳")
+        bot.reply_to(message, "در حال استخراج زیرنویس از طریق سرورهای مرجع... ⏳")
         
         video_id = get_video_id(url)
         if not video_id:
             bot.reply_to(message, "❌ لینک یوتیوب نامعتبر است.")
             return
             
-        # استفاده از روش بای‌پس
         text = get_transcript_bypass(video_id)
         
         if not text:
-            bot.reply_to(message, "❌ نتوانستم زیرنویس را استخراج کنم. یا ویدیو زیرنویس ندارد یا دسترسی مسدود است.")
+            bot.reply_to(message, "❌ نتوانستم زیرنویس را استخراج کنم. (یا ویدیو اصلاً زیرنویس CC ندارد، یا دسترسی سرور مسدود است)")
             return
         
-        bot.reply_to(message, "✅ زیرنویس با موفقیت و بدون درگیری با یوتیوب دریافت شد! در حال تحلیل با هوش مصنوعی... 🧠")
+        bot.reply_to(message, "✅ زیرنویس با موفقیت استخراج شد! در حال تحلیل با هوش مصنوعی... 🧠")
 
         prompt = f"""
         تو یک متخصص سئو و تولید محتوا برای یوتیوب هستی. بر اساس متن زیرنویس این ویدیو:
