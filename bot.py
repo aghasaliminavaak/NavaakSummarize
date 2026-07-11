@@ -7,16 +7,15 @@ import google.generativeai as genai
 import threading
 from flask import Flask
 
-# دریافت رمزها از تنظیمات Railway
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
-model = genai.GenerativeModel("gemini-pro")
-model = genai.GenerativeModel("gemini-1.5-flash")
+genai.configure(api_key=GEMINI_API_KEY)
 
-# ==========================================
-# سرور فیک برای روشن ماندن در Railway
+# مشکل دقیقاً همین خط بود که به gemini-pro تغییر کرد
+model = genai.GenerativeModel("gemini-pro")
+
 app = Flask(__name__)
 @app.route('/')
 def home():
@@ -25,32 +24,26 @@ def home():
 def run_web():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-# ==========================================
 
 def get_video_id(url):
     match = re.search(r"(?:v=|\/|youtu\.be\/)([0-9A-Za-z_-]{11})", url)
     return match.group(1) if match else None
 
-# --- موتور استخراج متن ضدتحریم (نسخه ۳ - استفاده از سایت‌های مرجع) ---
 def get_transcript_bypass(video_id):
-    # روش اول: استفاده از youtubetranscript.com (بسیار سریع و پایدار)
     try:
         url = f"https://youtubetranscript.com/?server_vid2={video_id}"
         res = requests.get(url, timeout=10)
         
         if res.status_code == 200 and "<text" in res.text:
-            # استخراج تمام متن‌ها از فایل XML
             texts = re.findall(r'<text[^>]*>(.*?)</text>', res.text)
-            # تبدیل کدهای HTML به متن عادی (مثلا &quot; به ")
             clean_texts = [html.unescape(t) for t in texts]
             final_text = " ".join(clean_texts)
             
             if len(final_text) > 50:
                 return final_text
-    except Exception as e:
-        print(f"Method 1 failed: {e}")
+    except Exception:
+        pass
 
-    # روش دوم: سرورهای پشتیبان (اگر روش اول کار نکرد)
     backup_instances = [
         "https://pipedapi.tokhmi.xyz", 
         "https://pipedapi.kavin.rocks",
@@ -90,7 +83,6 @@ def get_transcript_bypass(video_id):
             continue
             
     return None
-# ----------------------------------------
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
