@@ -1,6 +1,6 @@
 import os
 import telebot
-import yt_dlp
+import re
 from youtube_transcript_api import YouTubeTranscriptApi
 import google.generativeai as genai
 import threading
@@ -15,16 +15,21 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
 # ==========================================
-# این بخش سرور فیک است تا Railway ارور ندهد
+# سرور فیک برای روشن ماندن در Railway
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Bot is alive and running perfectly!"
+    return "Bot is running perfectly!"
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 # ==========================================
+
+# تابع جدید و بی‌دردسر برای استخراج آیدی ویدیو از روی متن لینک
+def get_video_id(url):
+    match = re.search(r"(?:v=|\/|youtu\.be\/)([0-9A-Za-z_-]{11})", url)
+    return match.group(1) if match else None
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -36,12 +41,12 @@ def handle_link(message):
         url = message.text
         bot.reply_to(message, "در حال استخراج زیرنویس... لطفا منتظر بمانید ⏳")
         
-        # ۱. استخراج آیدی ویدیو با yt-dlp (بدون دانلود ویدیو)
-        ydl_opts = {'quiet': True, 'extract_flat': True}
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            video_id = info['id']
-        
+        # ۱. پیدا کردن آیدی ویدیو بدون درگیری با سرور یوتیوب
+        video_id = get_video_id(url)
+        if not video_id:
+            bot.reply_to(message, "❌ لینک یوتیوب نامعتبر است. لطفاً یک لینک صحیح بفرست.")
+            return
+            
         # ۲. گرفتن متن زیرنویس
         transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['fa', 'en'])
         text = " ".join([t['text'] for t in transcript_list])
@@ -63,9 +68,8 @@ def handle_link(message):
         bot.reply_to(message, response.text)
         
     except Exception as e:
-        bot.reply_to(message, f"❌ خطا در پردازش: {str(e)}\n\n(مطمئن شو ویدیو زیرنویس داره و پرایوت نیست)")
+        bot.reply_to(message, f"❌ خطا در استخراج: {str(e)}\n\n(مطمئن شو ویدیو زیرنویس داره)")
 
-# اجرای همزمان وب‌سرور و ربات تلگرام
 if __name__ == "__main__":
     threading.Thread(target=run_web).start()
     bot.infinity_polling()
